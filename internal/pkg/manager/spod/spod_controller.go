@@ -30,7 +30,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	"k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/tools/record"
@@ -369,7 +368,7 @@ func (r *ReconcileSPOd) handleCreate(
 		ctx, serviceMonitor,
 	); err != nil {
 		//nolint:gocritic
-		if runtime.IsNotRegisteredError(err) || meta.IsNoMatchError(err) {
+		if bindata.IsNotFound(err) {
 			r.log.Info("Service monitor resource does not seem to exist, ignoring")
 		} else if errors.IsAlreadyExists(err) {
 			r.log.Info("Service monitor already exist, skipping")
@@ -454,7 +453,7 @@ func (r *ReconcileSPOd) handleUpdate(
 	if err := r.client.Patch(
 		ctx, serviceMonitor, client.Merge,
 	); err != nil {
-		if runtime.IsNotRegisteredError(err) || meta.IsNoMatchError(err) {
+		if bindata.IsNotFound(err) {
 			r.log.Info("Service monitor resource does not seem to exist, ignoring")
 		} else {
 			return fmt.Errorf("updating service monitor: %w", err)

@@ -50,7 +50,7 @@ dependencies:
       match: OLM_VERSION
 
   - name: cert-manager
-    version: 1.11.1
+    version: 1.12.0
     refPaths:
     - path: test/e2e_test.go
       match: cert-manager/cert-manager
@@ -122,7 +122,7 @@ dependencies:
       match: registry.access.redhat.com/ubi8/ubi-minimal
 
   - name: ubi8-go-toolset
-    version: sha256:3f9754728f2ae36083badb14d57fa384ee7ce482f9bfa07d8b8967ea4f8a782a
+    version: sha256:3668078d16ac1cdb28544554a0578f71bb83b09c1e9c0666f12079d61826110e
     refPaths:
     - path: Dockerfile.ubi
       match: registry.access.redhat.com/ubi8/go-toolset
