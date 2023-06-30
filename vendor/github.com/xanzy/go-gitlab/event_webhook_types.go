@@ -271,21 +271,45 @@ type IssueEvent struct {
 	} `json:"project"`
 	Repository       *Repository `json:"repository"`
 	ObjectAttributes struct {
-		ID          int    `json:"id"`
-		Title       string `json:"title"`
-		AssigneeID  int    `json:"assignee_id"`
-		AuthorID    int    `json:"author_id"`
-		ProjectID   int    `json:"project_id"`
-		CreatedAt   string `json:"created_at"` // Should be *time.Time (see Gitlab issue #21468)
-		UpdatedAt   string `json:"updated_at"` // Should be *time.Time (see Gitlab issue #21468)
-		Position    int    `json:"position"`
-		BranchName  string `json:"branch_name"`
-		Description string `json:"description"`
-		MilestoneID int    `json:"milestone_id"`
-		State       string `json:"state"`
-		IID         int    `json:"iid"`
-		URL         string `json:"url"`
-		Action      string `json:"action"`
+		ID                  int      `json:"id"`
+		Title               string   `json:"title"`
+		AssigneeIDs         []int    `json:"assignee_ids"`
+		AssigneeID          int      `json:"assignee_id"`
+		AuthorID            int      `json:"author_id"`
+		ProjectID           int      `json:"project_id"`
+		CreatedAt           string   `json:"created_at"` // Should be *time.Time (see Gitlab issue #21468)
+		UpdatedAt           string   `json:"updated_at"` // Should be *time.Time (see Gitlab issue #21468)
+		UpdatedByID         int      `json:"updated_by_id"`
+		LastEditedAt        string   `json:"last_edited_at"`
+		LastEditedByID      int      `json:"last_edited_by_id"`
+		RelativePosition    int      `json:"relative_position"`
+		BranchName          string   `json:"branch_name"`
+		Description         string   `json:"description"`
+		MilestoneID         int      `json:"milestone_id"`
+		StateID             StateID  `json:"state_id"`
+		Confidential        bool     `json:"confidential"`
+		DiscussionLocked    bool     `json:"discussion_locked"`
+		DueDate             *ISOTime `json:"due_date"`
+		MovedToID           int      `json:"moved_to_id"`
+		DuplicatedToID      int      `json:"duplicated_to_id"`
+		TimeEstimate        int      `json:"time_estimate"`
+		TotalTimeSpent      int      `json:"total_time_spent"`
+		TimeChange          int      `json:"time_change"`
+		HumanTotalTimeSpent string   `json:"human_total_time_spent"`
+		HumanTimeEstimate   string   `json:"human_time_estimate"`
+		HumanTimeChange     string   `json:"human_time_change"`
+		Weight              int      `json:"weight"`
+		IID                 int      `json:"iid"`
+		URL                 string   `json:"url"`
+		State               string   `json:"state"`
+		Action              string   `json:"action"`
+		Severity            string   `json:"severity"`
+		EscalationStatus    string   `json:"escalation_status"`
+		EscalationPolicy    struct {
+			ID   int    `json:"id"`
+			Name string `json:"name"`
+		} `json:"escalation_policy"`
+		Labels []*EventLabel `json:"labels"`
 	} `json:"object_attributes"`
 	Assignee  *EventUser    `json:"assignee"`
 	Assignees *[]EventUser  `json:"assignees"`
@@ -375,6 +399,11 @@ type JobEvent struct {
 		Shared      bool   `json:"is_shared"`
 		Description string `json:"description"`
 	} `json:"runner"`
+	Environment struct {
+		Name           string `json:"name"`
+		Action         string `json:"action"`
+		DeploymentTier string `json:"deployment_tier"`
+	} `json:"environment"`
 }
 
 // MemberEvent represents a member event.
@@ -507,6 +536,7 @@ type MergeCommentEvent struct {
 // https://docs.gitlab.com/ee/user/project/integrations/webhook_events.html#merge-request-events
 type MergeEvent struct {
 	ObjectKind string     `json:"object_kind"`
+	EventType  string     `json:"event_type"`
 	User       *EventUser `json:"user"`
 	Project    struct {
 		ID                int             `json:"id"`
@@ -518,6 +548,7 @@ type MergeEvent struct {
 		Namespace         string          `json:"namespace"`
 		PathWithNamespace string          `json:"path_with_namespace"`
 		DefaultBranch     string          `json:"default_branch"`
+		CIConfigPath      string          `json:"ci_config_path"`
 		Homepage          string          `json:"homepage"`
 		URL               string          `json:"url"`
 		SSHURL            string          `json:"ssh_url"`
@@ -539,7 +570,10 @@ type MergeEvent struct {
 		UpdatedAt                string       `json:"updated_at"` // Should be *time.Time (see Gitlab issue #21468)
 		StCommits                []*Commit    `json:"st_commits"`
 		StDiffs                  []*Diff      `json:"st_diffs"`
+		LastEditedAt             string       `json:"last_edited_at"`
+		LastEditedByID           int          `json:"last_edited_by_id"`
 		MilestoneID              int          `json:"milestone_id"`
+		StateID                  StateID      `json:"state_id"`
 		State                    string       `json:"state"`
 		MergeStatus              string       `json:"merge_status"`
 		TargetProjectID          int          `json:"target_project_id"`
@@ -565,6 +599,7 @@ type MergeEvent struct {
 		LastCommit               struct {
 			ID        string     `json:"id"`
 			Message   string     `json:"message"`
+			Title     string     `json:"title"`
 			Timestamp *time.Time `json:"timestamp"`
 			URL       string     `json:"url"`
 			Author    struct {
@@ -574,18 +609,19 @@ type MergeEvent struct {
 		} `json:"last_commit"`
 		BlockingDiscussionsResolved bool          `json:"blocking_discussions_resolved"`
 		WorkInProgress              bool          `json:"work_in_progress"`
+		TotalTimeSpent              int           `json:"total_time_spent"`
+		TimeChange                  int           `json:"time_change"`
+		HumanTotalTimeSpent         string        `json:"human_total_time_spent"`
+		HumanTimeChange             string        `json:"human_time_change"`
+		HumanTimeEstimate           string        `json:"human_time_estimate"`
 		FirstContribution           bool          `json:"first_contribution"`
 		URL                         string        `json:"url"`
 		Labels                      []*EventLabel `json:"labels"`
 		Action                      string        `json:"action"`
 		DetailedMergeStatus         string        `json:"detailed_merge_status"`
 		OldRev                      string        `json:"oldrev"`
-		Assignee                    *EventUser    `json:"assignee"`
 	} `json:"object_attributes"`
 	Repository *Repository   `json:"repository"`
-	Assignee   *EventUser    `json:"assignee"`
-	Assignees  []*EventUser  `json:"assignees"`
-	Reviewers  []*EventUser  `json:"reviewers"`
 	Labels     []*EventLabel `json:"labels"`
 	Changes    struct {
 		Assignees struct {
@@ -604,6 +640,18 @@ type MergeEvent struct {
 			Previous []*EventLabel `json:"previous"`
 			Current  []*EventLabel `json:"current"`
 		} `json:"labels"`
+		LastEditedAt struct {
+			Previous string `json:"previous"`
+			Current  string `json:"current"`
+		} `json:"last_edited_at"`
+		LastEditedByID struct {
+			Previous int `json:"previous"`
+			Current  int `json:"current"`
+		} `json:"last_edited_by_id"`
+		MilestoneID struct {
+			Previous int `json:"previous"`
+			Current  int `json:"current"`
+		} `json:"milestone_id"`
 		SourceBranch struct {
 			Previous string `json:"previous"`
 			Current  string `json:"current"`
@@ -636,11 +684,9 @@ type MergeEvent struct {
 			Previous int `json:"previous"`
 			Current  int `json:"current"`
 		} `json:"updated_by_id"`
-		MilestoneID struct {
-			Previous int `json:"previous"`
-			Current  int `json:"current"`
-		} `json:"milestone_id"`
 	} `json:"changes"`
+	Assignees []*EventUser `json:"assignees"`
+	Reviewers []*EventUser `json:"reviewers"`
 }
 
 // EventUser represents a user record in an event and is used as an even initiator or a merge assignee.
@@ -699,6 +745,7 @@ type PipelineEvent struct {
 	ObjectKind       string `json:"object_kind"`
 	ObjectAttributes struct {
 		ID             int      `json:"id"`
+		IID            int      `json:"iid"`
 		Ref            string   `json:"ref"`
 		Tag            bool     `json:"tag"`
 		SHA            string   `json:"sha"`
