@@ -38,8 +38,8 @@ require (
 	k8s.io/cli-runtime v0.27.2
 	k8s.io/client-go v0.27.2
 	k8s.io/klog/v2 v2.100.1
-	oras.land/oras-go/v2 v2.1.0
-	sigs.k8s.io/controller-runtime v0.15.0
+	oras.land/oras-go/v2 v2.2.1
+	sigs.k8s.io/controller-runtime v0.15.1
 	sigs.k8s.io/controller-tools v0.12.1
 	sigs.k8s.io/mdtoc v1.1.0
 	sigs.k8s.io/release-utils v0.7.3
