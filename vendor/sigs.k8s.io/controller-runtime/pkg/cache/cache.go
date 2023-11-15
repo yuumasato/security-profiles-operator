@@ -22,6 +22,8 @@ import (
 	"net/http"
 	"time"
 
+	"golang.org/x/exp/maps"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/fields"
@@ -102,7 +104,11 @@ type Informer interface {
 	HasSynced() bool
 }
 
-// Options are the optional arguments for creating a new InformersMap object.
+// AllNamespaces should be used as the map key to deliminate namespace settings
+// that apply to all namespaces that themselves do not have explicit settings.
+const AllNamespaces = metav1.NamespaceAll
+
+// Options are the optional arguments for creating a new Cache object.
 type Options struct {
 	// HTTPClient is the http client to use for the REST client
 	HTTPClient *http.Client
@@ -144,8 +150,21 @@ type Options struct {
 	// Default watches all namespaces
 	Namespaces []string
 
-	// DefaultLabelSelector will be used as a label selectors for all object types
-	// unless they have a more specific selector set in ByObject.
+	// DefaultNamespaces maps namespace names to cache configs. If set, only
+	// the namespaces in here will be watched and it will by used to default
+	// ByObject.Namespaces for all objects if that is nil.
+	//
+	// It is possible to have specific Config for just some namespaces
+	// but cache all namespaces by using the AllNamespaces const as the map key.
+	// This will then include all namespaces that do not have a more specific
+	// setting.
+	//
+	// The options in the Config that are nil will be defaulted from
+	// the respective Default* settings.
+	DefaultNamespaces map[string]Config
+
+	// DefaultLabelSelector will be used as a label selector for all objects
+	// unless there is already one set in ByObject or DefaultNamespaces.
 	DefaultLabelSelector labels.Selector
 
 	// DefaultFieldSelector will be used as a field selectors for all object types
@@ -170,6 +189,28 @@ type Options struct {
 
 // ByObject offers more fine-grained control over the cache's ListWatch by object.
 type ByObject struct {
+	// Namespaces maps a namespace name to cache configs. If set, only the
+	// namespaces in this map will be cached.
+	//
+	// Settings in the map value that are unset will be defaulted.
+	// Use an empty value for the specific setting to prevent that.
+	//
+	// It is possible to have specific Config for just some namespaces
+	// but cache all namespaces by using the AllNamespaces const as the map key.
+	// This will then include all namespaces that do not have a more specific
+	// setting.
+	//
+	// A nil map allows to default this to the cache's DefaultNamespaces setting.
+	// An empty map prevents this and means that all namespaces will be cached.
+	//
+	// The defaulting follows the following precedence order:
+	// 1. ByObject
+	// 2. DefaultNamespaces[namespace]
+	// 3. Default*
+	//
+	// This must be unset for cluster-scoped objects.
+	Namespaces map[string]Config
+
 	// Label represents a label selector for the object.
 	Label labels.Selector
 
@@ -268,6 +309,62 @@ func defaultOpts(config *rest.Config, opts Options) (Options, error) {
 		}
 	}
 
+	for namespace, cfg := range opts.DefaultNamespaces {
+		cfg = defaultConfig(cfg, optionDefaultsToConfig(&opts))
+		if namespace == metav1.NamespaceAll {
+			cfg.FieldSelector = fields.AndSelectors(appendIfNotNil(namespaceAllSelector(maps.Keys(opts.DefaultNamespaces)), cfg.FieldSelector)...)
+		}
+		opts.DefaultNamespaces[namespace] = cfg
+	}
+
+	for obj, byObject := range opts.ByObject {
+		isNamespaced, err := apiutil.IsObjectNamespaced(obj, opts.Scheme, opts.Mapper)
+		if err != nil {
+			return opts, fmt.Errorf("failed to determine if %T is namespaced: %w", obj, err)
+		}
+		if !isNamespaced && byObject.Namespaces != nil {
+			return opts, fmt.Errorf("type %T is not namespaced, but its ByObject.Namespaces setting is not nil", obj)
+		}
+
+		// Default the namespace-level configs first, because they need to use the undefaulted type-level config.
+		for namespace, config := range byObject.Namespaces {
+			// 1. Default from the undefaulted type-level config
+			config = defaultConfig(config, byObjectToConfig(byObject))
+
+			// 2. Default from the namespace-level config. This was defaulted from the global default config earlier, but
+			//    might not have an entry for the current namespace.
+			if defaultNamespaceSettings, hasDefaultNamespace := opts.DefaultNamespaces[namespace]; hasDefaultNamespace {
+				config = defaultConfig(config, defaultNamespaceSettings)
+			}
+
+			// 3. Default from the global defaults
+			config = defaultConfig(config, optionDefaultsToConfig(&opts))
+
+			if namespace == metav1.NamespaceAll {
+				config.FieldSelector = fields.AndSelectors(
+					appendIfNotNil(
+						namespaceAllSelector(maps.Keys(byObject.Namespaces)),
+						config.FieldSelector,
+					)...,
+				)
+			}
+
+			byObject.Namespaces[namespace] = config
+		}
+
+		defaultedConfig := defaultConfig(byObjectToConfig(byObject), optionDefaultsToConfig(&opts))
+		byObject.Label = defaultedConfig.LabelSelector
+		byObject.Field = defaultedConfig.FieldSelector
+		byObject.Transform = defaultedConfig.Transform
+		byObject.UnsafeDisableDeepCopy = defaultedConfig.UnsafeDisableDeepCopy
+
+		if isNamespaced && byObject.Namespaces == nil {
+			byObject.Namespaces = opts.DefaultNamespaces
+		}
+
+		opts.ByObject[obj] = byObject
+	}
+
 	// Default the resync period to 10 hours if unset
 	if opts.SyncPeriod == nil {
 		opts.SyncPeriod = &defaultSyncPeriod
@@ -295,4 +392,22 @@ func convertToInformerOptsByGVK(in map[client.Object]ByObject, scheme *runtime.S
 		}
 	}
 	return out, nil
+}
+
+func namespaceAllSelector(namespaces []string) fields.Selector {
+	selectors := make([]fields.Selector, 0, len(namespaces)-1)
+	for _, namespace := range namespaces {
+		if namespace != metav1.NamespaceAll {
+			selectors = append(selectors, fields.OneTermNotEqualSelector("metadata.namespace", namespace))
+		}
+	}
+
+	return fields.AndSelectors(selectors...)
+}
+
+func appendIfNotNil[T comparable](a, b T) []T {
+	if b != *new(T) {
+		return []T{a, b}
+	}
+	return []T{a}
 }
